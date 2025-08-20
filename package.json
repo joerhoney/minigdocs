@@ -8,8 +8,10 @@
     "build": "node build.mjs"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
     "googleapis": "^140.0.0",
+    "node-fetch": "^3.3.2",
     "slugify": "^1.6.6"
   }
 }

@@ -1,58 +1,74 @@
-// Run npm run auth, open the printed URL, grant access, and
-// your tokens.json (with Refresh Token) will be saved locally.
-import "dotenv/config";
-import http from "http";
-import { google } from "googleapis";
-import fs from "fs";
+import express from "express";
+import fetch from "node-fetch";
+import dotenv from "dotenv";
+
+dotenv.config();
+const app = express();
 
 const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI } =
   process.env;
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
-  console.error("Missing Google OAuth env vars. Check your .env");
+  console.error("❌ Missing required environment variables in .env");
   process.exit(1);
 }
 
-const oauth2Client = new google.auth.OAuth2(
-  GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET,
-  GOOGLE_REDIRECT_URI
-);
+app.get("/auth", (req, res) => {
+  const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  authUrl.searchParams.set("client_id", GOOGLE_CLIENT_ID);
+  authUrl.searchParams.set("redirect_uri", GOOGLE_REDIRECT_URI);
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set(
+    "scope",
+    "https://www.googleapis.com/auth/drive.file"
+  );
+  authUrl.searchParams.set("access_type", "offline");
+  authUrl.searchParams.set("prompt", "consent");
 
-const scopes = ["https://www.googleapis.com/auth/drive.readonly"];
-
-const authUrl = oauth2Client.generateAuthUrl({
-  access_type: "offline",
-  prompt: "consent",
-  scope: scopes,
+  res.redirect(authUrl.toString());
 });
 
-console.log("\nAuthorize this app by visiting:\n", authUrl, "\n");
+app.get("/oauth2callback", async (req, res) => {
+  const code = req.query.code;
+  if (!code) {
+    return res.status(400).send("❌ Missing authorization code.");
+  }
 
-// Simple local server to receive the OAuth redirect
-http
-  .createServer(async (req, res) => {
-    if (!req.url.startsWith("/oauth2callback")) {
-      res.writeHead(200, { "Content-Type": "text/plain" });
-      return res.end("Waiting for OAuth redirect...");
-    }
-    const url = new URL(req.url, `http://localhost:${server.address().port}`);
-    const code = url.searchParams.get("code");
-    try {
-      const { tokens } = await oauth2Client.getToken(code);
-      fs.writeFileSync("./tokens.json", JSON.stringify(tokens, null, 2));
-      res.writeHead(200, { "Content-Type": "text/plain" });
-      res.end("Success! tokens.json saved. You can close this tab.");
-      console.log("\nSaved tokens to tokens.json");
-      server.close();
-    } catch (e) {
-      console.error(e);
-      res.writeHead(500);
-      res.end("Auth failed. Check console.");
-    }
-  })
-  .listen(5173, () => {
-    console.log("Listening on http://localhost:5173 ...");
-  });
+  try {
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: GOOGLE_REDIRECT_URI,
+        grant_type: "authorization_code",
+      }),
+    });
 
-const server = http.createServer();
+    const data = await tokenRes.json();
+    if (data.error) {
+      console.error("❌ Token exchange failed:", data);
+      return res
+        .status(401)
+        .send(
+          `Google rejected the request: ${data.error_description || data.error}`
+        );
+    }
+
+    console.log("✅ Access Token:", data.access_token);
+    res.send(
+      "Authentication successful! Check your terminal for the access token."
+    );
+  } catch (err) {
+    console.error("❌ OAuth error:", err);
+    res.status(500).send("Internal server error");
+  }
+});
+
+const PORT = 5173;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`👉 Visit http://localhost:${PORT}/auth to start OAuth flow`);
+});
