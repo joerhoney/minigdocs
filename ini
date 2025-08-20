@@ -1,0 +1,4 @@
+GOOGLE_CLIENT_ID=your_client_id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your_client_secret
+GOOGLE_REFRESH_TOKEN=the_refresh_token_from_token.json
+GOOGLE_DOC_ID=your_google_doc_id_here
